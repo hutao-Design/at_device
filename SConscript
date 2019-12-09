@@ -1,16 +1,18 @@
-# RT-Thread building script for bridge
-
-import os
 from building import *
 
 cwd = GetCurrentDir()
-objs = []
-list = os.listdir(cwd)
+path = [cwd + '/inc']
+src  = Glob('src/*.c')
 
-if GetDepend('PKG_USING_HELLO'):
-    for d in list:
-        path = os.path.join(cwd, d)
-        if os.path.isfile(os.path.join(path, 'SConscript')):
-            objs = objs + SConscript(os.path.join(d, 'SConscript'))
+# W60X
+if GetDepend(['MY_AT_DEVICE_USING_W60X']):
+    path += [cwd + '/class/w60x']
+    src += Glob('class/w60x/at_device_w60x.c')
+    if GetDepend(['AT_USING_SOCKET']):
+        src += Glob('class/w60x/at_socket_w60x.c')
+    if GetDepend(['MY_AT_DEVICE_W60X_SAMPLE']):
+        src += Glob('samples/at_sample_w60x.c')
 
-Return('objs')
+group = DefineGroup('at_device', src, depend = ['PKG_USING_MY_AT_DEVICE'], CPPPATH = path)
+
+Return('group')
