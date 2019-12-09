@@ -1,3 +1,27 @@
+	/*
+ * File      : at_device.h
+ * This file is part of RT-Thread RTOS
+ * COPYRIGHT (C) 2006 - 2018, RT-Thread Development Team
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Change Logs:
+ * Date           Author       Notes
+ * 2019-05-08     chenyong     first version
+ */
+
 #ifndef __AT_DEVICE_H__
 #define __AT_DEVICE_H__
 
@@ -8,7 +32,7 @@ extern "C" {
 #include <at.h>
 #include <at_socket.h>
 
-#if !defined(RT_USING_NETDEV) || (!defined(AT_SW_VERSION_NUM) || AT_SW_VERSION_NUM < 0x10200)
+#if !defined(RT_USING_NETDEV) || (!defined(AT_SW_VERSION_NUM) || AT_SW_VERSION_NUM < 0x10300)
 #error "This RT-Thread version is older, please check and updata laster RT-Thread!"
 #else
 
@@ -16,30 +40,39 @@ extern "C" {
 #include <netdev.h>
 #endif /* RT_USING_NETDEV */
 
-#define AT_DEVICE_SW_VERSION           "1.0.0"
-#define AT_DEVICE_SW_VERSION_NUM       0x10000
+#define AT_DEVICE_SW_VERSION           "2.0.2"
+#define AT_DEVICE_SW_VERSION_NUM       0x20002
 
 /* AT device class ID */
-#define AT_DEVICE_CLASS_W60X           0x01U
+#define AT_DEVICE_CLASS_ESP8266        0x01U
+#define AT_DEVICE_CLASS_M26_MC20       0x02U
+#define AT_DEVICE_CLASS_EC20           0x03U
+#define AT_DEVICE_CLASS_SIM800C        0x04U
+#define AT_DEVICE_CLASS_SIM76XX        0x05U
+#define AT_DEVICE_CLASS_RW007          0x06U
+#define AT_DEVICE_CLASS_MW31           0x07U
+#define AT_DEVICE_CLASS_ESP32          0x08U
+#define AT_DEVICE_CLASS_W60X           0x09U
+#define AT_DEVICE_CLASS_A9G            0x0AU
 
 /* Options and Commands for AT device control opreations */
-#define MY_AT_DEVICE_CTRL_POWER_ON        0x01L
-#define MY_AT_DEVICE_CTRL_POWER_OFF       0x02L
-#define MY_AT_DEVICE_CTRL_RESET           0x03L
-#define MY_AT_DEVICE_CTRL_LOW_POWER       0x04L
-#define MY_AT_DEVICE_CTRL_SLEEP           0x05L
-#define MY_AT_DEVICE_CTRL_WAKEUP          0x06L
-#define MY_AT_DEVICE_CTRL_NET_CONN        0x07L
-#define MY_AT_DEVICE_CTRL_NET_DISCONN     0x08L
-#define MY_AT_DEVICE_CTRL_SET_WIFI_INFO   0x09L
-#define MY_AT_DEVICE_CTRL_GET_SIGNAL      0x0AL
-#define MY_AT_DEVICE_CTRL_GET_GPS         0x0BL
-#define MY_AT_DEVICE_CTRL_GET_VER         0x0CL
+#define AT_DEVICE_CTRL_POWER_ON        0x01L
+#define AT_DEVICE_CTRL_POWER_OFF       0x02L
+#define AT_DEVICE_CTRL_RESET           0x03L
+#define AT_DEVICE_CTRL_LOW_POWER       0x04L
+#define AT_DEVICE_CTRL_SLEEP           0x05L
+#define AT_DEVICE_CTRL_WAKEUP          0x06L
+#define AT_DEVICE_CTRL_NET_CONN        0x07L
+#define AT_DEVICE_CTRL_NET_DISCONN     0x08L
+#define AT_DEVICE_CTRL_SET_WIFI_INFO   0x09L
+#define AT_DEVICE_CTRL_GET_SIGNAL      0x0AL
+#define AT_DEVICE_CTRL_GET_GPS         0x0BL
+#define AT_DEVICE_CTRL_GET_VER         0x0CL
 
 /* Name type */
-#define MY_AT_DEVICE_NAMETYPE_DEVICE      0x01
-#define MY_AT_DEVICE_NAMETYPE_NETDEV      0x02
-#define MY_AT_DEVICE_NAMETYPE_CLIENT      0x03
+#define AT_DEVICE_NAMETYPE_DEVICE      0x01
+#define AT_DEVICE_NAMETYPE_NETDEV      0x02
+#define AT_DEVICE_NAMETYPE_CLIENT      0x03
 
 struct at_device;
 
