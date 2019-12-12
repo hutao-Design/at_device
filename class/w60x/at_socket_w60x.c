@@ -56,7 +56,26 @@ static int w60x_socket_event_recv(struct at_device *device, uint32_t event, uint
  */
 static int w60x_socket_close(struct at_socket *socket)
 {
-	return 0;
+	  int result = RT_EOK;
+    at_response_t resp = RT_NULL;
+    int device_socket = (int) socket->user_data;
+    struct at_device *device = (struct at_device *) socket->device;
+
+    resp = at_create_resp(64, 0, rt_tick_from_millisecond(300));
+    if (resp == RT_NULL)
+    {
+        LOG_E("no memory for resp create.");
+        return -RT_ENOMEM;
+    }
+
+    result = at_obj_exec_cmd(device->client, resp, "AT+CIPCLOSE=%d", device_socket);
+
+    if (resp)
+    {
+        at_delete_resp(resp);
+    }
+
+    return result;
 }	
 
 /**
@@ -75,7 +94,71 @@ static int w60x_socket_close(struct at_socket *socket)
  */
 static int w60x_socket_connect(struct at_socket *socket, char *ip, int32_t port, enum at_socket_type type, rt_bool_t is_client)
 {
-	return 0;
+    int result = RT_EOK;
+    rt_bool_t retryed = RT_FALSE;
+    at_response_t resp = RT_NULL;
+    int device_socket = (int) socket->user_data;
+    struct at_device *device = (struct at_device *) socket->device;
+
+    RT_ASSERT(ip);
+    RT_ASSERT(port >= 0);
+
+    resp = at_create_resp(128, 0, 30 * RT_TICK_PER_SECOND);
+    if (resp == RT_NULL)
+    {
+        LOG_E("no memory for resp create.");
+        return -RT_ENOMEM;
+    }
+
+__retry:
+    if (is_client)
+    {
+        switch (type)
+        {
+        case AT_SOCKET_TCP:
+            /* send AT commands to connect TCP server */
+            if (at_obj_exec_cmd(device->client, resp,
+                                "AT+CIPSTART=%d,\"TCP\",\"%s\",%d,60", device_socket, ip, port) < 0)
+            {
+                result = -RT_ERROR;
+            }
+            break;
+
+        case AT_SOCKET_UDP:
+            if (at_obj_exec_cmd(device->client, resp,
+                                "AT+CIPSTART=%d,\"UDP\",\"%s\",%d", device_socket, ip, port) < 0)
+            {
+                result = -RT_ERROR;
+            }
+            break;
+
+        default:
+            LOG_E("not supported connect type %d.", type);
+            result = -RT_ERROR;
+            goto __exit;
+        }
+    }
+
+    if (result != RT_EOK && retryed == RT_FALSE)
+    {
+        LOG_D("%s device socket (%d) connect failed, the socket was not be closed and now will connect retry.",
+                device->name, device_socket);
+        if (w60x_socket_close(socket) < 0)
+        {
+            goto __exit;
+        }
+        retryed = RT_TRUE;
+        result = RT_EOK;
+        goto __retry;
+    }
+
+__exit:
+    if (resp)
+    {
+        at_delete_resp(resp);
+    }
+
+    return result;
 }
 
 /**
@@ -93,7 +176,99 @@ static int w60x_socket_connect(struct at_socket *socket, char *ip, int32_t port,
  */
 static int w60x_socket_send(struct at_socket *socket, const char *buff, size_t bfsz, enum at_socket_type type)
 {
-	return 0;
+    int result = RT_EOK;
+    int event_result = 0;
+    size_t cur_pkt_size = 0, sent_size = 0;
+    at_response_t resp = RT_NULL;
+    int device_socket = (int) socket->user_data;
+    struct at_device *device = (struct at_device *) socket->device;
+    struct at_device_w60x *w60x = (struct at_device_w60x *) device->user_data;
+    rt_mutex_t lock = device->client->lock;
+
+    RT_ASSERT(buff);
+    RT_ASSERT(bfsz > 0);
+
+    resp = at_create_resp(128, 2, 5 * RT_TICK_PER_SECOND);
+    if (resp == RT_NULL)
+    {
+        LOG_E("no memory for resp create.");
+        return -RT_ENOMEM;
+    }
+
+    rt_mutex_take(lock, RT_WAITING_FOREVER);
+
+    /* set current socket for send URC event */
+    w60x->user_data = (void *) device_socket;
+
+    /* set AT client end sign to deal with '>' sign */
+    at_obj_set_end_sign(device->client, '>');
+
+    while (sent_size < bfsz)
+    {
+        if (bfsz - sent_size < W60X_MODULE_SEND_MAX_SIZE)
+        {
+            cur_pkt_size = bfsz - sent_size;
+        }
+        else
+        {
+            cur_pkt_size = W60X_MODULE_SEND_MAX_SIZE;
+        }
+
+        /* send the "AT+CIPSEND" commands to AT server than receive the '>' response on the first line */
+        if (at_obj_exec_cmd(device->client, resp, "AT+CIPSEND=%d,%d", device_socket, cur_pkt_size) < 0)
+        {
+            result = -RT_ERROR;
+            goto __exit;
+        }
+
+        /* send the real data to server or client */
+        result = (int) at_client_obj_send(device->client, buff + sent_size, cur_pkt_size);
+        if (result == 0)
+        {
+            result = -RT_ERROR;
+            goto __exit;
+        }
+
+        /* waiting result event from AT URC */
+        if (w60x_socket_event_recv(device, SET_EVENT(device_socket, 0),
+                                      10 * RT_TICK_PER_SECOND, RT_EVENT_FLAG_OR) < 0)
+        {
+            LOG_E("%s device socket(%d) wait connect result timeout.", device->name, device_socket);
+            result = -RT_ETIMEOUT;
+            goto __exit;
+        }
+        /* waiting OK or failed result */
+        event_result = w60x_socket_event_recv(device, W60X_EVENT_SEND_OK | W60X_EVENT_SEND_FAIL,
+                                                 5 * RT_TICK_PER_SECOND, RT_EVENT_FLAG_OR);
+        if (event_result < 0)
+        {
+            LOG_E("%s device socket(%d) wait connect OK|FAIL timeout.", device->name, device_socket);
+            result = -RT_ETIMEOUT;
+            goto __exit;
+        }
+        /* check result */
+        if (event_result & W60X_EVENT_SEND_FAIL)
+        {
+            LOG_E("%s device socket(%d) send failed.", device->name, device_socket);
+            result = -RT_ERROR;
+            goto __exit;
+        }
+
+        sent_size += cur_pkt_size;
+    }
+
+__exit:
+    /* reset the end sign for data */
+    at_obj_set_end_sign(device->client, 0);
+
+    rt_mutex_release(lock);
+
+    if (resp)
+    {
+        at_delete_resp(resp);
+    }
+
+    return result > 0 ? sent_size : result;
 }
 
 /**
@@ -108,7 +283,67 @@ static int w60x_socket_send(struct at_socket *socket, const char *buff, size_t b
  */
 static int w60x_domain_resolve(const char *name, char ip[16])
 {
-	return 0;
+#define RESOLVE_RETRY        5
+
+    int i, result = RT_EOK;
+    char recv_ip[16] = { 0 };
+    at_response_t resp = RT_NULL;
+    struct at_device *device = RT_NULL;
+
+    RT_ASSERT(name);
+    RT_ASSERT(ip);
+
+    device = at_device_get_first_initialized();				//
+    if (device == RT_NULL)
+    {
+        LOG_E("get first init device failed.");
+        return -RT_ERROR;
+    }
+
+    resp = at_create_resp(128, 0, 20 * RT_TICK_PER_SECOND);
+    if (resp == RT_NULL)
+    {
+        LOG_E("no memory for resp create.");
+        return -RT_ENOMEM;
+    }
+
+    for (i = 0; i < RESOLVE_RETRY; i++)
+    {
+        if (at_obj_exec_cmd(device->client, resp, "AT+CIPDOMAIN=%s", name) < 0)
+        {
+            result = -RT_ERROR;
+            goto __exit;
+        }
+
+        /* parse the third line of response data, get the IP address */
+        if (at_resp_parse_line_args_by_kw(resp, "+CIPDOMAIN:", "+CIPDOMAIN:%s", recv_ip) < 0)
+        {
+            rt_thread_mdelay(100);
+            /* resolve failed, maybe receive an URC CRLF */
+            continue;
+        }
+
+        if (rt_strlen(recv_ip) < 8)
+        {
+            rt_thread_mdelay(100);
+            /* resolve failed, maybe receive an URC CRLF */
+            continue;
+        }
+        else
+        {
+            rt_strncpy(ip, recv_ip, 15);
+            ip[15] = '\0';
+            break;
+        }
+    }
+
+__exit:
+    if (resp)
+    {
+        at_delete_resp(resp);
+    }
+
+    return result;
 }
 
 /**
