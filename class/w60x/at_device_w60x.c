@@ -593,7 +593,7 @@ static void urc_func(struct at_client *client, const char *data, rt_size_t size)
 		if (rt_strstr(data, "WIFI CONNECTED"))
     {
 			LOG_I("%s device wifi is connected.", device->name);
-			
+			device->is_init=RT_TRUE;
 		}
 		else if (rt_strstr(data, "WIFI DISCONNECT"))
     {
@@ -602,7 +602,7 @@ static void urc_func(struct at_client *client, const char *data, rt_size_t size)
 				device->is_init=RT_FALSE;
 				netdev_low_level_set_link_status(device->netdev, RT_FALSE);
 			}
-			w60x_netdev_start_delay_work(device,w60x_netdev_reset);			
+			//w60x_netdev_start_delay_work(device,w60x_netdev_reset);			
 		}else if(rt_strstr(data, "WIFI GOT IP")){
 			LOG_I("%s device wifi is got ip.", device->name);
 			if(device->is_init==RT_TRUE){
